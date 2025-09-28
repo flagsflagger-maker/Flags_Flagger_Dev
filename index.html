@@ -32,16 +32,8 @@ body { margin:0; padding:0; }
   box-shadow:0 0 6px rgba(0,0,0,0.3);
   font-family:sans-serif;
 }
-.flag-button {
-  display:block;
-  margin-top:5px;
-  padding:4px 8px;
-  background:#f00;
-  color:#fff;
-  text-align:center;
-  border-radius:3px;
+button {
   cursor:pointer;
-  text-decoration:none;
 }
 </style>
 </head>
@@ -60,6 +52,8 @@ body { margin:0; padding:0; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
 <script>
+const WEBAPP_URL = "https://script.google.com/macros/s/AKfycbygHeD8oVTvd_W5rPRRSIK6gtsuTjKx_XFbI4paN5AknZEObdsGLgQqj9-h6XdbIGfbPA/exec";
+
 var map = L.map('map').setView([53.96, -1.08], 13);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
 
@@ -67,13 +61,10 @@ var reportLayer = L.markerClusterGroup();
 var reportedLayer = L.layerGroup();
 
 const GEOJSON_URL = "Street_lighting.geojson";
-const REPORTED_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQH2VV-FfOWWKyr4XRaVAPxWL-8zn2dKmYB_2XxxKG_b9IfJVtgGU5xcFje_wh7WW_AyGpDABQpMlFo/pub?gid=27103071&single=true&output=csv';
-const CLEARED_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTQ8KXvsECao-1KLnmp9SC9kO3mTjj0a9rBmNkqNHeFTNkXDW9FvrCSeML6gdnbRp2_PhqaFAim-so9/pub?gid=0&single=true&output=csv';
-const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzkWYWi9mNsHce5EkkEtNhB9Ze97nMoJHEpHTCRGIFtiEsrs7k2XwaLclIMTEYsGrFRAA/exec';
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQH2VV-FfOWWKyr4XRaVAPxWL-8zn2dKmYB_2XxxKG_b9IfJVtgGU5xcFje_wh7WW_AyGpDABQpMlFo/pub?gid=27103071&single=true&output=csv';
 
+// --- Load GeoJSON once ---
 let geoLookup = {};
-
-// --- Load GeoJSON for Report overlay ---
 fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
   geojsonData.features.forEach(f=>{
     const id = f.properties.LP_UNIQUE_REF || f.properties.IIT_NE_ID;
@@ -100,65 +91,65 @@ fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
     reportLayer.addLayer(marker);
   });
 
-  map.addLayer(reportLayer);
-
-  // --- Load Reported Flags overlay ---
-  function loadReportedLayer(){
-    reportedLayer.clearLayers();
-
-    Papa.parse(CLEARED_CSV, { download:true, header:true, skipEmptyLines:true, complete: function(clearedResults){
-      let clearedIds = clearedResults.data.map(r=>String(r.LP_UNIQUE_REF).trim()).filter(id=>id);
-
-      Papa.parse(REPORTED_CSV, { download:true, header:true, skipEmptyLines:true, complete: function(reportedResults){
-        let reported = reportedResults.data.filter(r=>{
-          const id = String(r.LP_UNIQUE_REF).trim();
-          return id && !clearedIds.includes(id);
-        });
-
-        document.getElementById('reported-counter').textContent = "Reported Flags: "+reported.length;
-
-        reported.forEach(r=>{
-          const id = r.LP_UNIQUE_REF;
-          const issue = r.Issue_Description || '';
-          const timestamp = r.Timestamp || '';
-          const coords = geoLookup[id];
-          if(!coords) return;
-
-          let severity = 'Low';
-          if(issue.toLowerCase().includes('med')) severity = 'Med';
-          else if(issue.toLowerCase().includes('high')) severity = 'High';
-          let color = severity==='Low'?'green':severity==='Med'?'orange':'red';
-
-          const popupContent = "<b>Streetlight Ref:</b>"+id+
-                               "<br><b>Issue:</b>"+issue+
-                               "<br><b>Timestamp:</b>"+timestamp+
-                               "<br><a class='flag-button' onclick='flagRemoved(\""+id+"\")'>Flag Removed</a>";
-
-          const marker = L.circleMarker([coords[1], coords[0]], {
-            radius:8, fillColor:color, color:'#000', weight:1, opacity:1, fillOpacity:0.8
-          }).bindPopup(popupContent);
-
-          reportedLayer.addLayer(marker);
-        });
-
-      }});
-    }});
-  }
-
-  loadReportedLayer();
-  setInterval(loadReportedLayer, 60000);
+  map.addLayer(reportLayer); // default
 });
 
-// --- Flag Removed function ---
-function flagRemoved(lp_id){
-  fetch(WEBAPP_URL + "?LP_UNIQUE_REF=" + encodeURIComponent(lp_id), { method: 'GET' })
-    .then(res => res.json())
-    .then(data => alert("Flag removed successfully!"))
-    .catch(err => alert("Error submitting flag: "+err));
+// --- Load Reported overlay ---
+function loadReportedLayer() {
+  reportedLayer.clearLayers();
+  Papa.parse(CSV_URL, {
+    download:true,
+    header:true,
+    skipEmptyLines:true,
+    complete:function(results){
+      const reported = results.data.filter(r=>r.LP_UNIQUE_REF);
+      document.getElementById('reported-counter').textContent = "Reported Flags: "+reported.length;
+
+      reported.forEach(r=>{
+        const id = r.LP_UNIQUE_REF;
+        const issue = r.Issue_Description || '';
+        const timestamp = r.Timestamp || '';
+        const coords = geoLookup[id];
+        if(!coords) return;
+
+        let severity = 'Low';
+        if(issue.toLowerCase().includes('med')) severity='Med';
+        else if(issue.toLowerCase().includes('high')) severity='High';
+        let color = severity==='Low'?'green':severity==='Med'?'orange':'red';
+
+        const marker = L.circleMarker([coords[1], coords[0]], {
+          radius:8, fillColor:color, color:'#000', weight:1, opacity:1, fillOpacity:0.8
+        });
+
+        // Popup with Flag Removed button
+        const popupContent = document.createElement("div");
+        popupContent.innerHTML = `<b>Streetlight Ref:</b>${id}<br><b>Issue:</b>${issue}<br><b>Timestamp:</b>${timestamp}<br>`;
+        const btn = document.createElement("button");
+        btn.textContent = "Flag Removed";
+        btn.style.marginTop = "5px";
+        btn.onclick = () => {
+          fetch(WEBAPP_URL + "?LP_UNIQUE_REF=" + encodeURIComponent(id))
+            .then(resp => resp.json())
+            .then(data => {
+              if(data.status==="ok") alert("Flag removed successfully");
+              else alert("Error submitting flag: " + data.message);
+            })
+            .catch(err => alert("Error submitting flag: " + err));
+        };
+        popupContent.appendChild(btn);
+        marker.bindPopup(popupContent);
+        reportedLayer.addLayer(marker);
+      });
+    }
+  });
 }
 
+// initial load and auto-refresh
+loadReportedLayer();
+setInterval(loadReportedLayer, 60000);
+
 // --- Dropdown toggle ---
-document.getElementById('layer-toggle').addEventListener('change', function(){
+document.getElementById('layer-toggle').addEventListener('change',function(){
   const val = this.value;
   if(val==='report'){
     if(map.hasLayer(reportedLayer)) map.removeLayer(reportedLayer);
