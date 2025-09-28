@@ -2,130 +2,31 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Street Lighting Map</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
-<style>
-body { margin:0; padding:0; }
-#map { width:100%; height:100vh; }
-.custom-control { position:absolute; top:40px; right:10px; z-index:1000; background:white; padding:5px 10px; border-radius:4px; font-family:sans-serif; }
-#reported-counter { position:absolute; top:10px; right:10px; z-index:1000; background:white; padding:6px 12px; border-radius:4px; font-weight:bold; box-shadow:0 0 6px rgba(0,0,0,0.3); font-family:sans-serif; }
-</style>
+<title>Push Timestamp to Google Sheet</title>
 </head>
 <body>
-<div id="map"></div>
-<div class="custom-control">
-  <select id="layer-toggle">
-    <option value="report">Report</option>
-    <option value="reported">Reported</option>
-  </select>
-</div>
-<div id="reported-counter">Reported Flags: 0</div>
-
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<h2>Push Timestamp to Google Sheet</h2>
+<button id="submit-btn">Submit Timestamp</button>
+<p id="status"></p>
 
 <script>
-const FLAG_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx1o5BY9_JTlfCJ4qmZScBU0GuWWWMZJeWQcCKyNTMNNnXs7ZVYrU7Ww9M4knJ3vFP4/exec";
-const GEOJSON_URL = "Street_lighting.geojson";
-const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQH2VV-FfOWWKyr4XRaVAPxWL-8zn2dKmYB_2XxxKG_b9IfJVtgGU5xcFje_wh7WW_AyGpDABQpMlFo/pub?gid=0&single=true&output=csv';
+const WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwLZSFT4gGuUt87kpMYrwgDQi0djPJuIV6cImwmS0Gjtx7GmCEXUxE0yyRA8m76Hrpe/exec";
 
-var map = L.map('map').setView([53.96, -1.08], 13);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
-
-var reportLayer = L.markerClusterGroup();
-var reportedLayer = L.layerGroup();
-
-let geoLookup = {};
-fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
-  geojsonData.features.forEach(f=>{
-    const id = f.properties.LP_UNIQUE_REF || f.properties.IIT_NE_ID;
-    if(id) geoLookup[id] = f.geometry.coordinates;
-
-    const desc = f.properties.DESCRIPTION || "";
-    const road = f.properties.ROAD_NAME || "";
-    const ward = f.properties.WARD || "";
-    const loc = f.properties.LOCATION || "";
-
-    const formLink = "https://docs.google.com/forms/d/e/1FAIpQLSf5Q35Lody4pbcu9SKh3jxh3R5qqqLNajV6gzQgci6PZRB7Dg/viewform?usp=pp_url" +
-      "&entry.1636359810=" + encodeURIComponent(id) +
-      "&entry.476717375=" + encodeURIComponent(loc) +
-      "&entry.704251959=" + encodeURIComponent(road) +
-      "&entry.561605536=" + encodeURIComponent(ward);
-
-    const marker = L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]]);
-    marker.bindPopup("<b>Streetlight Ref:</b> "+id+
-                     "<br><b>Description:</b> "+desc+
-                     "<br><b>Road:</b> "+road+
-                     "<br><b>Ward:</b> "+ward+
-                     "<br><a href='"+formLink+"' target='_blank'>Report a problem</a>"+
-                     "<br><button class='flag-btn' data-id='"+id+"'>Flag for removal</button>");
-    reportLayer.addLayer(marker);
-
-    // Bind button click when popup opens
-    marker.on('popupopen', function(){
-      const btn = document.querySelector('.flag-btn[data-id="'+id+'"]');
-      if(btn) btn.onclick = ()=>{ flagForRemoval(id); };
-    });
-  });
-
-  map.addLayer(reportLayer);
-  loadReportedLayer();
-  setInterval(loadReportedLayer, 60000);
-});
-
-// --- Load Reported Flags ---
-function loadReportedLayer(){
-  reportedLayer.clearLayers();
-  const csvUrlWithTS = CSV_URL + "&_ts=" + Date.now();
-  Papa.parse(csvUrlWithTS,{
-    download:true,
-    header:true,
-    skipEmptyLines:true,
-    complete:function(results){
-      const reported = results.data.filter(r=>r.LP_UNIQUE_REF);
-      document.getElementById('reported-counter').textContent = "Reported Flags: "+reported.length;
-
-      reported.forEach(r=>{
-        const id = r.LP_UNIQUE_REF;
-        const coords = geoLookup[id];
-        if(!coords) return;
-
-        const marker = L.circleMarker([coords[1], coords[0]],{
-          radius:8, fillColor:'red', color:'#000', weight:1, opacity:1, fillOpacity:0.8
-        }).bindPopup("<b>Streetlight Ref:</b>"+id+
-                     "<br><b>Timestamp:</b>"+r.Timestamp);
-
-        reportedLayer.addLayer(marker);
-      });
+document.getElementById('submit-btn').addEventListener('click', function() {
+  fetch(WEBAPP_URL, {
+    method: 'POST'
+  })
+  .then(res => res.json())
+  .then(data => {
+    if(data.status === 'success') {
+      document.getElementById('status').textContent = "Timestamp submitted successfully!";
+    } else {
+      document.getElementById('status').textContent = "Error: " + data.message;
     }
+  })
+  .catch(err => {
+    document.getElementById('status').textContent = "Fetch error: " + err;
   });
-}
-
-// --- Flag for Removal ---
-function flagForRemoval(id){
-  fetch(FLAG_WEB_APP_URL+"?LP_UNIQUE_REF="+encodeURIComponent(id))
-    .then(res=>res.text())
-    .then(txt=>{
-      alert(txt);
-      loadReportedLayer();
-    })
-    .catch(err=>alert("Error submitting flag: "+err));
-}
-
-// --- Layer Toggle ---
-document.getElementById('layer-toggle').addEventListener('change',function(){
-  const val = this.value;
-  if(val==='report'){
-    if(map.hasLayer(reportedLayer)) map.removeLayer(reportedLayer);
-    map.addLayer(reportLayer);
-  } else if(val==='reported'){
-    if(map.hasLayer(reportLayer)) map.removeLayer(reportLayer);
-    map.addLayer(reportedLayer);
-  }
 });
 </script>
 </body>
