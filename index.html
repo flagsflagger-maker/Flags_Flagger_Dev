@@ -10,28 +10,8 @@
 <style>
 body { margin:0; padding:0; }
 #map { width:100%; height:100vh; }
-.custom-control {
-  position:absolute;
-  top:40px;
-  right:10px;
-  z-index:1000;
-  background:white;
-  padding:5px 10px;
-  border-radius:4px;
-  font-family:sans-serif;
-}
-#reported-counter {
-  position:absolute;
-  top:10px;
-  right:10px;
-  z-index:1000;
-  background:white;
-  padding:6px 12px;
-  border-radius:4px;
-  font-weight:bold;
-  box-shadow:0 0 6px rgba(0,0,0,0.3);
-  font-family:sans-serif;
-}
+.custom-control { position:absolute; top:40px; right:10px; z-index:1000; background:white; padding:5px 10px; border-radius:4px; font-family:sans-serif; }
+#reported-counter { position:absolute; top:10px; right:10px; z-index:1000; background:white; padding:6px 12px; border-radius:4px; font-weight:bold; box-shadow:0 0 6px rgba(0,0,0,0.3); font-family:sans-serif; }
 </style>
 </head>
 <body>
@@ -51,7 +31,7 @@ body { margin:0; padding:0; }
 <script>
 const FLAG_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx1o5BY9_JTlfCJ4qmZScBU0GuWWWMZJeWQcCKyNTMNNnXs7ZVYrU7Ww9M4knJ3vFP4/exec";
 const GEOJSON_URL = "Street_lighting.geojson";
-const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTQ8KXvsECao-1KLnmp9SC9kO3mTjj0a9rBmNkqNHeFTNkXDW9FvrCSeML6gdnbRp2_PhqaFAim-so9/pub?gid=0&single=true&output=csv';
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQH2VV-FfOWWKyr4XRaVAPxWL-8zn2dKmYB_2XxxKG_b9IfJVtgGU5xcFje_wh7WW_AyGpDABQpMlFo/pub?gid=0&single=true&output=csv';
 
 var map = L.map('map').setView([53.96, -1.08], 13);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
@@ -76,15 +56,20 @@ fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
       "&entry.704251959=" + encodeURIComponent(road) +
       "&entry.561605536=" + encodeURIComponent(ward);
 
-    const popupContent = "<b>Streetlight Ref:</b> "+id+
-                         "<br><b>Description:</b> "+desc+
-                         "<br><b>Road:</b> "+road+
-                         "<br><b>Ward:</b> "+ward+
-                         "<br><a href='"+formLink+"' target='_blank'>Report a problem</a>"+
-                         "<br><button onclick='flagForRemoval(\""+id+"\")'>Flag for removal</button>";
-
-    const marker = L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]]).bindPopup(popupContent);
+    const marker = L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]]);
+    marker.bindPopup("<b>Streetlight Ref:</b> "+id+
+                     "<br><b>Description:</b> "+desc+
+                     "<br><b>Road:</b> "+road+
+                     "<br><b>Ward:</b> "+ward+
+                     "<br><a href='"+formLink+"' target='_blank'>Report a problem</a>"+
+                     "<br><button class='flag-btn' data-id='"+id+"'>Flag for removal</button>");
     reportLayer.addLayer(marker);
+
+    // Bind button click when popup opens
+    marker.on('popupopen', function(){
+      const btn = document.querySelector('.flag-btn[data-id="'+id+'"]');
+      if(btn) btn.onclick = ()=>{ flagForRemoval(id); };
+    });
   });
 
   map.addLayer(reportLayer);
@@ -95,7 +80,8 @@ fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
 // --- Load Reported Flags ---
 function loadReportedLayer(){
   reportedLayer.clearLayers();
-  Papa.parse(CSV_URL,{
+  const csvUrlWithTS = CSV_URL + "&_ts=" + Date.now();
+  Papa.parse(csvUrlWithTS,{
     download:true,
     header:true,
     skipEmptyLines:true,
@@ -123,7 +109,10 @@ function loadReportedLayer(){
 function flagForRemoval(id){
   fetch(FLAG_WEB_APP_URL+"?LP_UNIQUE_REF="+encodeURIComponent(id))
     .then(res=>res.text())
-    .then(txt=>{ alert(txt); loadReportedLayer(); })
+    .then(txt=>{
+      alert(txt);
+      loadReportedLayer();
+    })
     .catch(err=>alert("Error submitting flag: "+err));
 }
 
