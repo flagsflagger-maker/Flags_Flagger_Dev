@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Street Lighting Map</title>
+<title>Street Lighting Map with Flags</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
@@ -32,9 +32,6 @@ body { margin:0; padding:0; }
   box-shadow:0 0 6px rgba(0,0,0,0.3);
   font-family:sans-serif;
 }
-button {
-  cursor:pointer;
-}
 </style>
 </head>
 <body>
@@ -52,18 +49,19 @@ button {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
 <script>
-const WEBAPP_URL = "https://script.google.com/macros/s/AKfycbygHeD8oVTvd_W5rPRRSIK6gtsuTjKx_XFbI4paN5AknZEObdsGLgQqj9-h6XdbIGfbPA/exec";
-
 var map = L.map('map').setView([53.96, -1.08], 13);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
 
 var reportLayer = L.markerClusterGroup();
 var reportedLayer = L.layerGroup();
 
 const GEOJSON_URL = "Street_lighting.geojson";
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQH2VV-FfOWWKyr4XRaVAPxWL-8zn2dKmYB_2XxxKG_b9IfJVtgGU5xcFje_wh7WW_AyGpDABQpMlFo/pub?gid=27103071&single=true&output=csv';
+const FLAGS_WEBAPP = 'https://script.google.com/macros/s/AKfycbygHeD8oVTvd_W5rPRRSIK6gtsuTjKx_XFbI4paN5AknZEObdsGLgQqj9-h6XdbIGfbPA/exec';
 
-// --- Load GeoJSON once ---
+// --- Load GeoJSON for Report overlay ---
 let geoLookup = {};
 fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
   geojsonData.features.forEach(f=>{
@@ -74,7 +72,6 @@ fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
     const road = f.properties.ROAD_NAME || "";
     const ward = f.properties.WARD || "";
     const loc = f.properties.LOCATION || "";
-
     const formLink = "https://docs.google.com/forms/d/e/1FAIpQLSf5Q35Lody4pbcu9SKh3jxh3R5qqqLNajV6gzQgci6PZRB7Dg/viewform?usp=pp_url" +
       "&entry.1636359810=" + encodeURIComponent(id) +
       "&entry.476717375=" + encodeURIComponent(loc) +
@@ -91,62 +88,52 @@ fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
     reportLayer.addLayer(marker);
   });
 
-  map.addLayer(reportLayer); // default
+  map.addLayer(reportLayer);
+
+  // --- Load Reported Flags ---
+  function loadReportedLayer(){
+    reportedLayer.clearLayers();
+    Papa.parse(CSV_URL, {
+      download:true,
+      header:true,
+      skipEmptyLines:true,
+      complete:function(results){
+        const reported = results.data.filter(r=>r.LP_UNIQUE_REF);
+        document.getElementById('reported-counter').textContent = "Reported Flags: "+reported.length;
+
+        reported.forEach(r=>{
+          const id = r.LP_UNIQUE_REF;
+          const timestamp = r.Timestamp || '';
+          const coords = geoLookup[id];
+          if(!coords) return;
+
+          const marker = L.circleMarker([coords[1], coords[0]], {
+            radius:8, fillColor:'red', color:'#000', weight:1, opacity:1, fillOpacity:0.8
+          }).bindPopup("<b>Streetlight Ref:</b>"+id+
+                       "<br><b>Timestamp:</b>"+timestamp+
+                       "<br><button onclick=\"flagRemoved('"+id+"')\">Flag Removed</button>");
+          reportedLayer.addLayer(marker);
+        });
+      }
+    });
+  }
+
+  loadReportedLayer();
+  setInterval(loadReportedLayer, 30000);
 });
 
-// --- Load Reported overlay ---
-function loadReportedLayer() {
-  reportedLayer.clearLayers();
-  Papa.parse(CSV_URL, {
-    download:true,
-    header:true,
-    skipEmptyLines:true,
-    complete:function(results){
-      const reported = results.data.filter(r=>r.LP_UNIQUE_REF);
-      document.getElementById('reported-counter').textContent = "Reported Flags: "+reported.length;
-
-      reported.forEach(r=>{
-        const id = r.LP_UNIQUE_REF;
-        const issue = r.Issue_Description || '';
-        const timestamp = r.Timestamp || '';
-        const coords = geoLookup[id];
-        if(!coords) return;
-
-        let severity = 'Low';
-        if(issue.toLowerCase().includes('med')) severity='Med';
-        else if(issue.toLowerCase().includes('high')) severity='High';
-        let color = severity==='Low'?'green':severity==='Med'?'orange':'red';
-
-        const marker = L.circleMarker([coords[1], coords[0]], {
-          radius:8, fillColor:color, color:'#000', weight:1, opacity:1, fillOpacity:0.8
-        });
-
-        // Popup with Flag Removed button
-        const popupContent = document.createElement("div");
-        popupContent.innerHTML = `<b>Streetlight Ref:</b>${id}<br><b>Issue:</b>${issue}<br><b>Timestamp:</b>${timestamp}<br>`;
-        const btn = document.createElement("button");
-        btn.textContent = "Flag Removed";
-        btn.style.marginTop = "5px";
-        btn.onclick = () => {
-          fetch(WEBAPP_URL + "?LP_UNIQUE_REF=" + encodeURIComponent(id))
-            .then(resp => resp.json())
-            .then(data => {
-              if(data.status==="ok") alert("Flag removed successfully");
-              else alert("Error submitting flag: " + data.message);
-            })
-            .catch(err => alert("Error submitting flag: " + err));
-        };
-        popupContent.appendChild(btn);
-        marker.bindPopup(popupContent);
-        reportedLayer.addLayer(marker);
-      });
-    }
+// --- Flag Removed Function ---
+function flagRemoved(id){
+  fetch(FLAGS_WEBAPP+"?LP_UNIQUE_REF="+encodeURIComponent(id))
+  .then(res=>res.json())
+  .then(data=>{
+    alert("Flag submitted!");
+    loadReportedLayer();
+  })
+  .catch(err=>{
+    alert("Error submitting flag: "+err);
   });
 }
-
-// initial load and auto-refresh
-loadReportedLayer();
-setInterval(loadReportedLayer, 60000);
 
 // --- Dropdown toggle ---
 document.getElementById('layer-toggle').addEventListener('change',function(){
