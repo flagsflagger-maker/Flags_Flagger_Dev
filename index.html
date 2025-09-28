@@ -32,6 +32,17 @@ body { margin:0; padding:0; }
   box-shadow:0 0 6px rgba(0,0,0,0.3);
   font-family:sans-serif;
 }
+.flag-button {
+  display:block;
+  margin-top:5px;
+  padding:4px 8px;
+  background:#f00;
+  color:#fff;
+  text-align:center;
+  border-radius:3px;
+  cursor:pointer;
+  text-decoration:none;
+}
 </style>
 </head>
 <body>
@@ -58,6 +69,7 @@ var reportedLayer = L.layerGroup();
 const GEOJSON_URL = "Street_lighting.geojson";
 const REPORTED_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQH2VV-FfOWWKyr4XRaVAPxWL-8zn2dKmYB_2XxxKG_b9IfJVtgGU5xcFje_wh7WW_AyGpDABQpMlFo/pub?gid=27103071&single=true&output=csv';
 const CLEARED_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTQ8KXvsECao-1KLnmp9SC9kO3mTjj0a9rBmNkqNHeFTNkXDW9FvrCSeML6gdnbRp2_PhqaFAim-so9/pub?gid=0&single=true&output=csv';
+const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzkWYWi9mNsHce5EkkEtNhB9Ze97nMoJHEpHTCRGIFtiEsrs7k2XwaLclIMTEYsGrFRAA/exec';
 
 let geoLookup = {};
 
@@ -88,17 +100,15 @@ fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
     reportLayer.addLayer(marker);
   });
 
-  map.addLayer(reportLayer); // default
+  map.addLayer(reportLayer);
 
   // --- Load Reported Flags overlay ---
   function loadReportedLayer(){
     reportedLayer.clearLayers();
 
-    // Fetch cleared IDs first
     Papa.parse(CLEARED_CSV, { download:true, header:true, skipEmptyLines:true, complete: function(clearedResults){
       let clearedIds = clearedResults.data.map(r=>String(r.LP_UNIQUE_REF).trim()).filter(id=>id);
 
-      // Fetch reported flags
       Papa.parse(REPORTED_CSV, { download:true, header:true, skipEmptyLines:true, complete: function(reportedResults){
         let reported = reportedResults.data.filter(r=>{
           const id = String(r.LP_UNIQUE_REF).trim();
@@ -119,11 +129,14 @@ fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
           else if(issue.toLowerCase().includes('high')) severity = 'High';
           let color = severity==='Low'?'green':severity==='Med'?'orange':'red';
 
+          const popupContent = "<b>Streetlight Ref:</b>"+id+
+                               "<br><b>Issue:</b>"+issue+
+                               "<br><b>Timestamp:</b>"+timestamp+
+                               "<br><a class='flag-button' onclick='flagRemoved(\""+id+"\")'>Flag Removed</a>";
+
           const marker = L.circleMarker([coords[1], coords[0]], {
             radius:8, fillColor:color, color:'#000', weight:1, opacity:1, fillOpacity:0.8
-          }).bindPopup("<b>Streetlight Ref:</b>"+id+
-                       "<br><b>Issue:</b>"+issue+
-                       "<br><b>Timestamp:</b>"+timestamp);
+          }).bindPopup(popupContent);
 
           reportedLayer.addLayer(marker);
         });
@@ -135,6 +148,14 @@ fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
   loadReportedLayer();
   setInterval(loadReportedLayer, 60000);
 });
+
+// --- Flag Removed function ---
+function flagRemoved(lp_id){
+  fetch(WEBAPP_URL + "?LP_UNIQUE_REF=" + encodeURIComponent(lp_id), { method: 'GET' })
+    .then(res => res.json())
+    .then(data => alert("Flag removed successfully!"))
+    .catch(err => alert("Error submitting flag: "+err));
+}
 
 // --- Dropdown toggle ---
 document.getElementById('layer-toggle').addEventListener('change', function(){
