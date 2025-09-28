@@ -3,14 +3,20 @@
 <head>
 <meta charset="utf-8">
 <title>Push Timestamp to Google Sheet</title>
+<style>
+body { font-family: sans-serif; padding: 20px; }
+button { padding: 10px 20px; font-size: 16px; }
+#status { margin-top: 10px; font-weight: bold; }
+</style>
 </head>
 <body>
+
 <h2>Push Timestamp to Google Sheet</h2>
 <button id="submit-btn">Submit Timestamp</button>
 <p id="status"></p>
 
 <script>
-const WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwLZSFT4gGuUt87kpMYrwgDQi0djPJuIV6cImwmS0Gjtx7GmCEXUxE0yyRA8m76Hrpe/exec";
+const WEBAPP_URL = "https://script.google.com/macros/s/AKfycby7HYCBu_orA0RbsC0I25jJrj_ODFyG6k_gx5tR-gy4p1eIiivf5cLfcrKP-AQNlA1v/exec";
 
 document.getElementById('submit-btn').addEventListener('click', function() {
   fetch(WEBAPP_URL, {
@@ -29,5 +35,6 @@ document.getElementById('submit-btn').addEventListener('click', function() {
   });
 });
 </script>
+
 </body>
 </html>
