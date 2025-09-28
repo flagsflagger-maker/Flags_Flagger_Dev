@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Street Lighting Map with Flags</title>
+<title>Street Lighting Map with Flags Removed</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
@@ -50,9 +50,7 @@ body { margin:0; padding:0; }
 
 <script>
 var map = L.map('map').setView([53.96, -1.08], 13);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '&copy; OpenStreetMap contributors'
-}).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
 
 var reportLayer = L.markerClusterGroup();
 var reportedLayer = L.layerGroup();
@@ -122,17 +120,18 @@ fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
   setInterval(loadReportedLayer, 30000);
 });
 
-// --- Flag Removed Function ---
+// --- Flag Removed Function using previously working logic ---
 function flagRemoved(id){
-  fetch(FLAGS_WEBAPP+"?LP_UNIQUE_REF="+encodeURIComponent(id))
-  .then(res=>res.json())
-  .then(data=>{
-    alert("Flag submitted!");
-    loadReportedLayer();
-  })
-  .catch(err=>{
-    alert("Error submitting flag: "+err);
-  });
+  const now = new Date().toISOString();
+  fetch(FLAGS_WEBAPP + "?LP_UNIQUE_REF=" + encodeURIComponent(id) + "&Timestamp=" + encodeURIComponent(now))
+    .then(res => res.json())
+    .then(data => {
+      alert("Flag submitted successfully!");
+      loadReportedLayer(); // refresh
+    })
+    .catch(err => {
+      alert("Error submitting flag: " + err);
+    });
 }
 
 // --- Dropdown toggle ---
