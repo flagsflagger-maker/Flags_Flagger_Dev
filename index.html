@@ -32,8 +32,15 @@ body { margin:0; padding:0; }
   box-shadow:0 0 6px rgba(0,0,0,0.3);
   font-family:sans-serif;
 }
-button.flag-btn {
-  background:#d9534f; color:white; border:none; padding:4px 6px; border-radius:3px; cursor:pointer;
+.flag-btn {
+  margin-top: 5px;
+  display:block;
+  background:#f44336;
+  color:#fff;
+  border:none;
+  padding:4px 8px;
+  border-radius:3px;
+  cursor:pointer;
 }
 </style>
 </head>
@@ -61,15 +68,15 @@ var reportedLayer = L.layerGroup();
 const GEOJSON_URL = "Street_lighting.geojson";
 const REPORTED_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQH2VV-FfOWWKyr4XRaVAPxWL-8zn2dKmYB_2XxxKG_b9IfJVtgGU5xcFje_wh7WW_AyGpDABQpMlFo/pub?gid=27103071&single=true&output=csv';
 const CLEARED_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTQ8KXvsECao-1KLnmp9SC9kO3mTjj0a9rBmNkqNHeFTNkXDW9FvrCSeML6gdnbRp2_PhqaFAim-so9/pub?gid=0&single=true&output=csv';
-const FLAG_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbygHeD8oVTvd_W5rPRRSIK6gtsuTjKx_XFbI4paN5AknZEObdsGLgQqj9-h6XdbIGfbPA/exec";
+const FLAG_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbygHeD8oVTvd_W5rPRRSIK6gtsuTjKx_XFbI4paN5AknZEObdsGLgQqj9-h6XdbIGfbPA/exec';
 
+// --- Load GeoJSON once for Report overlay ---
 let geoLookup = {};
-
-// --- Load GeoJSON for Report overlay ---
 fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
   geojsonData.features.forEach(f=>{
     const id = f.properties.LP_UNIQUE_REF || f.properties.IIT_NE_ID;
-    if(id) geoLookup[id] = f.geometry.coordinates;
+    if(!id) return;
+    geoLookup[id] = f.geometry.coordinates;
 
     const desc = f.properties.DESCRIPTION || "";
     const road = f.properties.ROAD_NAME || "";
@@ -93,82 +100,74 @@ fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
   });
 
   map.addLayer(reportLayer);
-
-  function loadReportedLayer() {
-    reportedLayer.clearLayers();
-
-    // --- Load Flags Cleared first ---
-    Papa.parse(CLEARED_CSV_URL, { download:true, header:true, skipEmptyLines:true, complete:function(clearedResults){
-      // Build a lookup of latest cleared timestamp per LP_UNIQUE_REF
-      const clearedLookup = {};
-      clearedResults.data.forEach(row=>{
-        if(row.LP_UNIQUE_REF && row.Timestamp){
-          const t = new Date(row.Timestamp).getTime();
-          if(!clearedLookup[row.LP_UNIQUE_REF] || t > clearedLookup[row.LP_UNIQUE_REF]){
-            clearedLookup[row.LP_UNIQUE_REF] = t;
-          }
-        }
-      });
-
-      // --- Load Reported CSV ---
-      Papa.parse(REPORTED_CSV_URL, { download:true, header:true, skipEmptyLines:true, complete:function(results){
-        const reported = results.data.filter(r=>r.LP_UNIQUE_REF);
-        // Filter out cleared flags
-        const filteredReported = reported.filter(r=>{
-          const repTime = new Date(r.Timestamp).getTime();
-          const clearTime = clearedLookup[r.LP_UNIQUE_REF] || 0;
-          return repTime > clearTime; // show only if reported after cleared
-        });
-
-        document.getElementById('reported-counter').textContent = "Reported Flags: "+filteredReported.length;
-
-        filteredReported.forEach(r=>{
-          const id = r.LP_UNIQUE_REF;
-          const issue = r.Issue_Description || '';
-          const timestamp = r.Timestamp || '';
-          const coords = geoLookup[id];
-          if(!coords) return;
-
-          let severity = 'Low';
-          if(issue.toLowerCase().includes('med')) severity = 'Med';
-          else if(issue.toLowerCase().includes('high')) severity = 'High';
-          let color = severity==='Low'?'green':severity==='Med'?'orange':'red';
-
-          const marker = L.circleMarker([coords[1], coords[0]], {
-            radius:8, fillColor:color, color:'#000', weight:1, opacity:1, fillOpacity:0.8
-          }).bindPopup(
-            `<b>Streetlight Ref:</b> ${id}<br>
-             <b>Issue:</b> ${issue}<br>
-             <b>Timestamp:</b> ${timestamp}<br>
-             <button class="flag-btn" onclick="flagRemoved('${id}')">Flag Removed</button>`
-          );
-
-          reportedLayer.addLayer(marker);
-        });
-      }});
-    }});
-  }
-
-  loadReportedLayer();
-  setInterval(loadReportedLayer, 60000);
 });
 
-// --- Flag Removed function ---
-function flagRemoved(id) {
-  fetch(`${FLAG_WEBAPP_URL}?LP_UNIQUE_REF=${encodeURIComponent(id)}`)
-    .then(res => res.json())
-    .then(data => {
-      if(data.status === "success") {
-        alert("Flag will be removed from tracker");
-      } else {
-        console.error("Error submitting flag:", data.message);
+// --- Load Reported overlay ---
+function loadReportedLayer() {
+  reportedLayer.clearLayers();
+
+  // Cache-bust URLs
+  const reportedUrl = REPORTED_CSV_URL + '?cacheBust=' + new Date().getTime();
+  const clearedUrl = CLEARED_CSV_URL + '?cacheBust=' + new Date().getTime();
+
+  // Load cleared flags first
+  Papa.parse(clearedUrl, { download:true, header:true, skipEmptyLines:true, complete:function(clearedResults){
+    const clearedLookup = {};
+    clearedResults.data.forEach(r=>{
+      if(r.LP_UNIQUE_REF && r.Timestamp){
+        const t = new Date(r.Timestamp).getTime();
+        if(!clearedLookup[r.LP_UNIQUE_REF] || t > clearedLookup[r.LP_UNIQUE_REF]){
+          clearedLookup[r.LP_UNIQUE_REF] = t;
+        }
       }
-    })
-    .catch(err => console.error("Error submitting flag:", err));
+    });
+
+    // Load reported flags
+    Papa.parse(reportedUrl, { download:true, header:true, skipEmptyLines:true, complete:function(repResults){
+      const reported = repResults.data.filter(r=>r.LP_UNIQUE_REF);
+      document.getElementById('reported-counter').textContent = "Reported Flags: "+reported.length;
+
+      reported.forEach(r=>{
+        const id = r.LP_UNIQUE_REF;
+        const issue = r.Issue_Description || '';
+        const timestamp = r.Timestamp || '';
+        const coords = geoLookup[id];
+        if(!coords) return;
+
+        const repTime = new Date(timestamp).getTime();
+        const clearTime = clearedLookup[id] || 0;
+
+        if(isNaN(repTime) || repTime <= clearTime) return; // skip cleared
+
+        let severity = 'Low';
+        if(issue.toLowerCase().includes('med')) severity='Med';
+        else if(issue.toLowerCase().includes('high')) severity='High';
+        let color = severity==='Low'?'green':severity==='Med'?'orange':'red';
+
+        const marker = L.circleMarker([coords[1], coords[0]], {
+          radius:8, fillColor:color, color:'#000', weight:1, opacity:1, fillOpacity:0.8
+        });
+
+        marker.bindPopup(
+          "<b>Streetlight Ref:</b>"+id+
+          "<br><b>Issue:</b>"+issue+
+          "<br><b>Timestamp:</b>"+timestamp+
+          "<br><button class='flag-btn' onclick='flagRemoved(\""+id+"\")'>Flag Removed</button>"
+        );
+
+        reportedLayer.addLayer(marker);
+      });
+
+    }});
+  }});
 }
 
+// Initial load + auto-refresh
+loadReportedLayer();
+setInterval(loadReportedLayer, 60000);
+
 // --- Dropdown toggle ---
-document.getElementById('layer-toggle').addEventListener('change',function(){
+document.getElementById('layer-toggle').addEventListener('change', function(){
   const val = this.value;
   if(val==='report'){
     if(map.hasLayer(reportedLayer)) map.removeLayer(reportedLayer);
@@ -178,6 +177,22 @@ document.getElementById('layer-toggle').addEventListener('change',function(){
     map.addLayer(reportedLayer);
   }
 });
+
+// --- Flag removed function ---
+function flagRemoved(lpId){
+  if(!lpId) return;
+  alert("Flag will be removed from tracker");
+
+  fetch(FLAG_WEBAPP_URL + "?LP_UNIQUE_REF=" + encodeURIComponent(lpId))
+    .then(res => res.json())
+    .then(data=>{
+      console.log("Flag submitted:", data);
+      loadReportedLayer(); // refresh after flag
+    })
+    .catch(err=>{
+      console.error("Error submitting flag:", err);
+    });
+}
 </script>
 </body>
 </html>
