@@ -30,6 +30,17 @@ body { margin:0; padding:0; }
   box-shadow:0 0 6px rgba(0,0,0,0.3);
   font-family:sans-serif;
 }
+#zoom-display {
+  position:absolute;
+  top:50px;
+  right:10px;
+  z-index:1000;
+  background:white;
+  padding:4px 8px;
+  border-radius:4px;
+  font-family:sans-serif;
+  box-shadow:0 0 4px rgba(0,0,0,0.3);
+}
 </style>
 </head>
 <body>
@@ -41,6 +52,7 @@ body { margin:0; padding:0; }
   </select>
 </div>
 <div id="reported-counter">Reported Flags: 0</div>
+<div id="zoom-display">Zoom: 0</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
@@ -85,9 +97,6 @@ fetch(GEOJSON_URL).then(res=>res.json()).then(data=>{
     const ward = f.properties.WARD || "";
     const loc = f.properties.LOCATION || "";
 
-    const formBase = "https://docs.google.com/forms/d/e/1FAIpQLSf5Q35Lody4pbcu9SKh3jxh3R5qqqLNajV6gzQgci6PZRB7Dg/viewform?usp=pp_url";
-
-    // 3 report buttons with predefined issue text
     const popup = `<b>Streetlight Ref:</b> ${id}<br>
                    <b>Description:</b> ${desc}<br>
                    <b>Road:</b> ${road}<br>
@@ -98,7 +107,6 @@ fetch(GEOJSON_URL).then(res=>res.json()).then(data=>{
 
     const marker = L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]]);
     marker.bindPopup(popup);
-    marker.options.zoomLevel = 0; // store zoom placeholder
     reportLayer.addLayer(marker);
   });
 
@@ -153,13 +161,14 @@ document.getElementById('layer-toggle').addEventListener('change',function(){
 // --- Show/hide report markers based on zoom ---
 function updateReportVisibility(){
   const zoom = map.getZoom();
+  document.getElementById('zoom-display').textContent = "Zoom: " + zoom;
+
   reportLayer.eachLayer(marker=>{
     if(zoom < MIN_ZOOM_SHOW){
-      marker.remove();
+      if(map.hasLayer(marker)) map.removeLayer(marker);
     } else if(zoom >= MAX_ZOOM){
       if(!map.hasLayer(marker)) marker.addTo(map);
     } else {
-      // optionally add logic for intermediate zooms
       if(!map.hasLayer(marker)) marker.addTo(map);
     }
   });
