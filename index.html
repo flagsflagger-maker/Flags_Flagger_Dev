@@ -59,15 +59,14 @@ const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQH2VV-FfOWWKyr
 
 const reportLayer = L.layerGroup();
 const reportedLayer = L.layerGroup();
-let reportFeatures = [];
+let geoLookup = {};
 let reportedData = [];
 
-// --- Load GeoJSON for Report overlay ---
-fetch(GEOJSON_URL).then(res => res.json()).then(geojsonData => {
-    reportFeatures = geojsonData.features;
-
-    reportFeatures.forEach(f => {
+// --- Load Report overlay ---
+fetch(GEOJSON_URL).then(res=>res.json()).then(data => {
+    data.features.forEach(f=>{
         const id = f.properties.LP_UNIQUE_REF;
+        geoLookup[id] = f.geometry.coordinates;
         const desc = f.properties.DESCRIPTION || "";
         const road = f.properties.ROAD_NAME || "";
         const ward = f.properties.WARD || "";
@@ -82,102 +81,71 @@ fetch(GEOJSON_URL).then(res => res.json()).then(geojsonData => {
         const popup = `<b>Streetlight Ref:</b> ${id}<br>
                        <b>Description:</b> ${desc}<br>
                        <b>Road:</b> ${road}<br>
-                       <b>Ward:</b> ${ward}<br>
-                       ${buttons}`;
+                       <b>Ward:</b> ${ward}<br>${buttons}`;
 
-        const marker = L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]])
-                        .bindPopup(popup);
+        const marker = L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]]).bindPopup(popup);
         reportLayer.addLayer(marker);
     });
-
     map.addLayer(reportLayer);
 });
 
-// --- Load Reported CSV and store ---
-function loadReportedData() {
+// --- Load Reported CSV ---
+function loadReportedData(){
     Papa.parse(CSV_URL, {
-        download: true,
-        header: true,
-        skipEmptyLines: true,
-        complete: function(results) {
-            reportedData = results.data.filter(r => r.LP_UNIQUE_REF);
+        download:true,
+        header:true,
+        skipEmptyLines:true,
+        complete:function(results){
+            reportedData = results.data.filter(r=>r.LP_UNIQUE_REF);
             document.getElementById('reported-counter').textContent = "Reported Flags: "+reportedData.length;
-            renderReportedMarkersChunked();
-        },
-        error: function(err){
-            console.error("Error fetching CSV", err);
+            renderReportedMarkers();
         }
     });
 }
 
-// --- Chunked rendering for Reported overlay ---
-let markersToAdd = [];
-let isRendering = false;
-
-function renderReportedMarkersChunked() {
+// --- Render reported markers at zoom >= 18 ---
+function renderReportedMarkers(){
     reportedLayer.clearLayers();
-    markersToAdd = [];
+    if(map.getZoom() < 18) return; // only show at max zoom
 
-    if(map.getZoom() < 18) return;
+    reportedData.forEach(r=>{
+        const coords = geoLookup[r.LP_UNIQUE_REF];
+        if(!coords) return;
 
-    const bounds = map.getBounds();
-
-    reportedData.forEach(r => {
-        const lat = parseFloat(r.Latitude);
-        const lng = parseFloat(r.Longitude);
-        if(!lat || !lng) return;
-        if(!bounds.contains([lat,lng])) return;
-
-        let severity = 'Low';
         const issue = r.Issue_Description || '';
-        if(issue.toLowerCase().includes('med')) severity='Med';
-        else if(issue.toLowerCase().includes('high')) severity='High';
-        const color = severity==='Low'?'green':severity==='Med'?'orange':'red';
+        let color = 'green';
+        if(issue.toLowerCase().includes('med')) color='orange';
+        else if(issue.toLowerCase().includes('high')) color='red';
 
-        const marker = L.circleMarker([lat, lng], {
-            radius: 8, fillColor: color, color: '#000', weight: 1, opacity:1, fillOpacity:0.8
+        const marker = L.circleMarker([coords[1], coords[0]],{
+            radius:8, fillColor:color, color:'#000', weight:1, opacity:1, fillOpacity:0.8
         }).bindPopup(`<b>Streetlight Ref:</b>${r.LP_UNIQUE_REF}<br>
                       <b>Issue:</b>${issue}<br>
                       <b>Timestamp:</b>${r.Timestamp}`);
-        markersToAdd.push(marker);
+        reportedLayer.addLayer(marker);
     });
-
-    if(!isRendering) addMarkersChunk();
 }
 
-function addMarkersChunk() {
-    if(markersToAdd.length === 0) {
-        isRendering = false;
-        return;
-    }
-    isRendering = true;
-    const chunk = markersToAdd.splice(0, 50); // add 50 markers at a time
-    chunk.forEach(m => reportedLayer.addLayer(m));
-    setTimeout(addMarkersChunk, 50); // next chunk after 50ms
-}
-
-// --- Zoom/Move events ---
-map.on('zoomend moveend', function(){
-    document.getElementById('zoom-display').textContent = 'Zoom: ' + map.getZoom();
-    if(map.hasLayer(reportedLayer)){
-        renderReportedMarkersChunked();
-    }
+// --- Map events ---
+map.on('zoomend',()=>{
+    document.getElementById('zoom-display').textContent = 'Zoom: '+map.getZoom();
+    if(map.hasLayer(reportedLayer)) renderReportedMarkers();
 });
 
-// --- Load CSV every 60s ---
+// --- Auto-refresh ---
 loadReportedData();
-setInterval(loadReportedData, 60000);
+setInterval(loadReportedData,60000);
 
 // --- Layer toggle ---
-document.getElementById('layer-toggle').addEventListener('change', function(){
+document.getElementById('layer-toggle').addEventListener('change',function(){
     const val = this.value;
     if(val==='report'){
-        if(map.hasLayer(reportedLayer)) map.removeLayer(reportedLayer);
+        map.removeLayer(reportedLayer);
         map.addLayer(reportLayer);
     } else {
-        if(map.hasLayer(reportLayer)) map.removeLayer(reportLayer);
+        map.removeLayer(reportLayer);
         map.addLayer(reportedLayer);
-        renderReportedMarkersChunked();
+        renderReportedMarkers();
     }
 });
 
