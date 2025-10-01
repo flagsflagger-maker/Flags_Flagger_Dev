@@ -63,8 +63,23 @@ body { margin:0; padding:0; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
 <script>
+// --- Map init with default (York) ---
 var map = L.map('map').setView([53.96, -1.08], 13);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+
+// --- Try to use user's location ---
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(function(pos) {
+    var userLat = pos.coords.latitude;
+    var userLng = pos.coords.longitude;
+    map.setView([userLat, userLng], 15); // focus closer on user
+    L.circleMarker([userLat, userLng], {
+      radius:8, fillColor:'blue', color:'#000', weight:1, opacity:1, fillOpacity:0.6
+    }).addTo(map).bindPopup("You are here").openPopup();
+  }, function(err){
+    console.warn("Geolocation denied or failed, keeping default view.");
+  });
+}
 
 var reportLayer = L.markerClusterGroup();
 var reportedLayer = L.layerGroup();
@@ -94,7 +109,7 @@ fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
         + "&entry.1808870260=" + encodeURIComponent(severityText);
     }
 
-    // Popup with 3 buttons that pass the exact text you requested
+    // Popup with 3 severity buttons
     const popup = "<b>Streetlight Ref:</b> "+id+
                   "<br><b>Description:</b> "+desc+
                   "<br><b>Road:</b> "+road+
@@ -109,10 +124,9 @@ fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
     reportLayer.addLayer(marker);
   });
 
-  // Show Report overlay by default
   map.addLayer(reportLayer);
 
-  // --- Load Reported overlay ---
+  // --- Reported overlay loader ---
   function loadReportedLayer() {
     reportedLayer.clearLayers();
     Papa.parse(CSV_URL, {
@@ -133,7 +147,6 @@ fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
           const Ward = r.WARD || '';
           if(!coords) return;
 
-          // attempt to infer color from Issue_Description if present
           let severity = 'Low';
           if(issue && issue.toLowerCase().includes('med')) severity = 'Med';
           else if(issue && issue.toLowerCase().includes('high')) severity = 'High';
@@ -150,16 +163,11 @@ fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
 
           reportedLayer.addLayer(marker);
         });
-      },
-      error:function(err){
-        console.error("CSV parse error:", err);
       }
     });
   }
 
-  // Initial load
   loadReportedLayer();
-  // Refresh every 60 seconds
   setInterval(loadReportedLayer, 60000);
 });
 
