@@ -58,7 +58,7 @@ body { margin:0; padding:0; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
 <script>
-var map = L.map('map').setView([53.96, -1.08], 13);
+var map = L.map('map').setView([53.96, -1.08], 18);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
 
 // Use user location if available
@@ -158,6 +158,7 @@ function updateReportMarkers(){
     reportMarkers.forEach(m => reportLayer.addLayer(m));
   }
 }
+
 map.on('zoomend', updateReportMarkers);
 
 // Reporting function
