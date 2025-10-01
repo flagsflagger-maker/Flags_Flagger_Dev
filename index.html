@@ -32,6 +32,20 @@ body { margin:0; padding:0; }
   box-shadow:0 0 6px rgba(0,0,0,0.3);
   font-family:sans-serif;
 }
+.report-btn {
+  display:inline-block;
+  margin:2px 4px 0 0;
+  padding:6px 8px;
+  border-radius:4px;
+  color:#fff;
+  text-decoration:none;
+  font-size:13px;
+}
+.report-low { background:green; }
+.report-med { background:orange; }
+.report-high { background:red; }
+.popup-buttons { margin-top:6px; display:flex; flex-direction:column; gap:6px; }
+.popup-buttons a { display:block; text-align:center; }
 </style>
 </head>
 <body>
@@ -58,7 +72,6 @@ var reportedLayer = L.layerGroup();
 const GEOJSON_URL = "Street_lighting.geojson";
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQH2VV-FfOWWKyr4XRaVAPxWL-8zn2dKmYB_2XxxKG_b9IfJVtgGU5xcFje_wh7WW_AyGpDABQpMlFo/pub?gid=27103071&single=true&output=csv';
 
-// --- Load GeoJSON once for coordinates & Report overlay ---
 let geoLookup = {};
 fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
   geojsonData.features.forEach(f=>{
@@ -69,19 +82,28 @@ fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
     const road = f.properties.ROAD_NAME || "";
     const ward = f.properties.WARD || "";
     const loc = f.properties.LOCATION || "";
-    //https://docs.google.com/forms/d/e/1FAIpQLSf5Q35Lody4pbcu9SKh3jxh3R5qqqLNajV6gzQgci6PZRB7Dg/viewform?usp=pp_url&entry.476717375=LOCATION&entry.704251959=ROAD_NAME&entry.561605536=WARD
-    // Google Form prefill link
-    const formLink = "https://docs.google.com/forms/d/e/1FAIpQLSf5Q35Lody4pbcu9SKh3jxh3R5qqqLNajV6gzQgci6PZRB7Dg/viewform?usp=pp_url" +
-      "&entry.1636359810=" + encodeURIComponent(id) +
-      "&entry.476717375=" + encodeURIComponent(loc) +
-      "&entry.704251959=" + encodeURIComponent(road) +
-      "&entry.561605536=" + encodeURIComponent(ward);
 
+    // Google Form base
+    const formBase = "https://docs.google.com/forms/d/e/1FAIpQLSf5Q35Lody4pbcu9SKh3jxh3R5qqqLNajV6gzQgci6PZRB7Dg/viewform?usp=pp_url";
+    function buildFormLink(severityText) {
+      return formBase
+        + "&entry.1636359810=" + encodeURIComponent(id)
+        + "&entry.476717375=" + encodeURIComponent(loc)
+        + "&entry.704251959=" + encodeURIComponent(road)
+        + "&entry.561605536=" + encodeURIComponent(ward)
+        + "&entry.1808870260=" + encodeURIComponent(severityText);
+    }
+
+    // Popup with 3 buttons that pass the exact text you requested
     const popup = "<b>Streetlight Ref:</b> "+id+
                   "<br><b>Description:</b> "+desc+
                   "<br><b>Road:</b> "+road+
                   "<br><b>Ward:</b> "+ward+
-                  "<br><a href='"+formLink+"' target='_blank'>Report a problem</a>";
+                  "<div class='popup-buttons'>" +
+                    "<a class='report-btn report-low' href='"+buildFormLink("Low (Could climb / boost someone to it)")+"' target='_blank'>Low (Could climb / boost someone to it)</a>" +
+                    "<a class='report-btn report-med' href='"+buildFormLink("Med (2 tier / Loppy)")+"' target='_blank'>Med (2 tier / Loppy)</a>" +
+                    "<a class='report-btn report-high' href='"+buildFormLink("High (3 tier)")+"' target='_blank'>High (3 tier)</a>" +
+                  "</div>";
 
     const marker = L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]]).bindPopup(popup);
     reportLayer.addLayer(marker);
@@ -90,7 +112,7 @@ fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
   // Show Report overlay by default
   map.addLayer(reportLayer);
 
-  // --- Start auto-refresh of Reported overlay ---
+  // --- Load Reported overlay ---
   function loadReportedLayer() {
     reportedLayer.clearLayers();
     Papa.parse(CSV_URL, {
@@ -111,9 +133,10 @@ fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
           const Ward = r.WARD || '';
           if(!coords) return;
 
+          // attempt to infer color from Issue_Description if present
           let severity = 'Low';
-          if(issue.toLowerCase().includes('med')) severity = 'Med';
-          else if(issue.toLowerCase().includes('high')) severity = 'High';
+          if(issue && issue.toLowerCase().includes('med')) severity = 'Med';
+          else if(issue && issue.toLowerCase().includes('high')) severity = 'High';
           let color = severity==='Low'?'green':severity==='Med'?'orange':'red';
 
           const marker = L.circleMarker([coords[1], coords[0]], {
@@ -127,16 +150,17 @@ fetch(GEOJSON_URL).then(res=>res.json()).then(geojsonData=>{
 
           reportedLayer.addLayer(marker);
         });
+      },
+      error:function(err){
+        console.error("CSV parse error:", err);
       }
     });
   }
 
   // Initial load
   loadReportedLayer();
-
-  // Refresh every 30 seconds
+  // Refresh every 60 seconds
   setInterval(loadReportedLayer, 60000);
-
 });
 
 // --- Dropdown toggle ---
